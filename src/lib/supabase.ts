@@ -1,12 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim();
+const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Supabase орчны хувьсагчид (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) .env.local дээр тохируулагдаагүй байна."
-  );
-}
+const isValidUrl = /^https?:\/\/.+/.test(rawUrl);
+
+const supabaseUrl = isValidUrl
+  ? rawUrl
+  : "https://goelivbsdaafwpkuaxph.supabase.co";
+
+const supabaseAnonKey = rawKey || "sb_publishable_placeholder";
+
+export const isSupabaseConfigured = Boolean(isValidUrl && rawKey);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
