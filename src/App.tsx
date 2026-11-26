@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
-import { supabase } from "./lib/supabase";
-import type {
-  AuditLog,
-  Branch,
-  Employee,
-  LeaveRequest,
-  Profile,
-} from "./types/hr";
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from './lib/supabase';
+import type { Branch, Employee, LeaveRequest, AuditLog, Profile } from './types/hr';
+import { AnalyticsCards } from './components/AnalyticsCards';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Системийн админ",
