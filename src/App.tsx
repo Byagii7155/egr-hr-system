@@ -1,3 +1,5 @@
+﻿
+export default App;
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import type { Session, AuthChangeEvent } from '@supabase/supabase-js';
@@ -21,6 +23,19 @@ interface EmployeeRecord extends EmployeeAnalyticsRow {
   evaluation_note?: string;
 }
 
+interface EvaluationHistoryItem {
+  id: string;
+  employeeId: string;
+  employeeCode: string;
+  fullName: string;
+  department: string;
+  score: number;
+  bonusAmount: number;
+  trainingType: string;
+  note: string;
+  updatedAt: string;
+}
+
 type PerformanceFilter = 'all' | 'high' | 'medium' | 'low';
 type SortKey = 'name' | 'kpi_desc' | 'salary_desc';
 
@@ -37,15 +52,23 @@ function getKpiBadge(score: number): { label: string; className: string } {
   return { label: `${score} • D`, className: 'bg-rose-100 text-rose-800' };
 }
 
+function formatTrainingLabel(type?: string): string {
+  if (type === 'compliance') return 'Хууль / Аюулгүй';
+  if (type === 'leadership') return 'Удирдлага';
+  return 'Мэргэжлийн';
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [branches, setBranches] = useState<BranchAnalyticsRow[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [performanceFilter, setPerformanceFilter] = useState<PerformanceFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [editingEmployee, setEditingEmployee] = useState<EvaluatableEmployee | null>(null);
+  const [evaluationHistory, setEvaluationHistory] = useState<EvaluationHistoryItem[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -117,11 +140,24 @@ export function App() {
     };
   }, []);
 
+  const departmentOptions = useMemo(() => {
+    const uniqueDeps = Array.from(
+      new Set(
+        employees
+          .map((e) => (e.department ?? '').trim())
+          .filter((dep) => dep.length > 0)
+      )
+    );
+    return uniqueDeps.sort((a, b) => a.localeCompare(b, 'mn'));
+  }, [employees]);
+
   const filteredEmployees = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     const list = employees.filter((emp) => {
       const matchBranch = selectedBranchId === 'all' || emp.branch_id === selectedBranchId;
+      const matchDepartment =
+        selectedDepartment === 'all' || (emp.department ?? '').trim() === selectedDepartment;
       const matchSearch =
         !q ||
         emp.full_name?.toLowerCase().includes(q) ||
@@ -136,7 +172,7 @@ export function App() {
         (performanceFilter === 'medium' && score >= 75 && score < 85) ||
         (performanceFilter === 'low' && score < 75);
 
-      return matchBranch && matchSearch && matchPerformance;
+      return matchBranch && matchDepartment && matchSearch && matchPerformance;
     });
 
     return [...list].sort((a, b) => {
@@ -150,7 +186,7 @@ export function App() {
       }
       return (a.full_name ?? '').localeCompare(b.full_name ?? '', 'mn');
     });
-  }, [employees, selectedBranchId, searchQuery, performanceFilter, sortKey]);
+  }, [employees, selectedBranchId, selectedDepartment, searchQuery, performanceFilter, sortKey]);
 
   const metrics = useMemo(() => {
     const totalEmployees = filteredEmployees.length;
@@ -205,6 +241,8 @@ export function App() {
       throw error;
     }
 
+    const targetEmployee = employees.find((emp) => emp.id === employeeId);
+
     setEmployees((prev) =>
       prev.map((emp) =>
         emp.id === employeeId
@@ -219,6 +257,29 @@ export function App() {
           : emp
       )
     );
+
+    if (targetEmployee) {
+      const nowLabel = new Date().toLocaleTimeString('mn-MN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+
+      const historyEntry: EvaluationHistoryItem = {
+        id: `${employeeId}-${Date.now()}`,
+        employeeId,
+        employeeCode: targetEmployee.employee_code ?? '',
+        fullName: targetEmployee.full_name ?? '',
+        department: targetEmployee.department ?? '',
+        score: updates.performance_score,
+        bonusAmount: updates.bonus_amount,
+        trainingType: updates.training_type,
+        note: updates.evaluation_note || 'Үнэлгээний тайлбар бичээгүй.',
+        updatedAt: nowLabel,
+      };
+
+      setEvaluationHistory((prev) => [historyEntry, ...prev].slice(0, 8));
+    }
 
     setToastMsg('Гүйцэтгэлийн үнэлгээ амжилттай шинэчлэгдлээ.');
     setTimeout(() => setToastMsg(null), 3500);
@@ -235,6 +296,7 @@ export function App() {
       'Урамшуулал',
       'KPI оноо',
       'Төлөв',
+      'Сүүлийн үнэлгээний тайлбар',
     ];
 
     const rows = filteredEmployees.map((emp) => [
@@ -247,6 +309,7 @@ export function App() {
       Number(emp.bonus_amount ?? 0),
       Number(emp.performance_score ?? 0),
       emp.status ?? '',
+      emp.evaluation_note ?? '',
     ]);
 
     const csvContent =
@@ -350,10 +413,27 @@ export function App() {
                 placeholder="Нэр, код, албан тушаалаар хайх..."
                 className="text-xs border border-slate-300 rounded-md px-3 py-1.5 bg-white text-slate-800 focus:outline-none focus:border-blue-900"
               />
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="text-xs border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-800 focus:outline-none focus:border-blue-900"
+              >
+                <option value="all">Бүх хэлтэс</option>
+                {departmentOptions.map((dep) => (
+                  <option key={dep} value={dep}>
+                    {dep}
+                  </option>
+                ))}
+              </select>
               <button
-                onClick={() => setSelectedBranchId('all')}
+                onClick={() => {
+                  setSelectedBranchId('all');
+                  setSelectedDepartment('all');
+                  setPerformanceFilter('all');
+                  setSearchQuery('');
+                }}
                 className={`text-xs font-medium px-2.5 py-1.5 rounded-md cursor-pointer ${
-                  selectedBranchId === 'all'
+                  selectedBranchId === 'all' && selectedDepartment === 'all'
                     ? 'bg-blue-900 text-white'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
@@ -390,6 +470,60 @@ export function App() {
         </section>
 
         <AnalyticsCards employees={filteredEmployees} branches={branches} />
+
+        {evaluationHistory.length > 0 && (
+          <section className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">
+                  Сүүлийн үнэлгээний тайлбар ба түүх ({evaluationHistory.length})
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Шинэчлэгдсэн KPI оноо, урамшуулал болон үнэлгээний дүгнэлтүүд
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEvaluationHistory([])}
+                className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
+              >
+                Цэвэрлэх
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {evaluationHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs space-y-1.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-900">
+                      {item.fullName}{' '}
+                      <span className="font-mono text-[11px] text-slate-500">
+                        ({item.employeeCode})
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-slate-400">{item.updatedAt}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-semibold">
+                      KPI: {item.score}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                      Бонус: {item.bonusAmount.toLocaleString('en-US')} ₮
+                    </span>
+                    <span className="text-slate-600">
+                      {item.department ? `${item.department} • ` : ''}
+                      {formatTrainingLabel(item.trainingType)}
+                    </span>
+                  </div>
+                  <p className="text-slate-700 italic">“{item.note}”</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm overflow-x-auto">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
@@ -450,7 +584,7 @@ export function App() {
               <tr className="border-b border-slate-200 text-slate-500">
                 <th className="py-2 pr-3 font-medium">Код</th>
                 <th className="py-2 pr-3 font-medium">Овог, нэр</th>
-                <th className="py-2 pr-3 font-medium">Албан тушаал</th>
+                <th className="py-2 pr-3 font-medium">Хэлтэс / Албан тушаал</th>
                 <th className="py-2 pr-3 font-medium">Сургалтын төрөл</th>
                 <th className="py-2 pr-3 font-medium">Үндсэн цалин</th>
                 <th className="py-2 pr-3 font-medium">Урамшуулал</th>
@@ -463,19 +597,27 @@ export function App() {
               {filteredEmployees.map((emp) => {
                 const score = Number(emp.performance_score ?? 0);
                 const kpiBadge = getKpiBadge(score);
-                const trainingLabel =
-                  emp.training_type === 'compliance'
-                    ? 'Хууль / Аюулгүй'
-                    : emp.training_type === 'leadership'
-                    ? 'Удирдлага'
-                    : 'Мэргэжлийн';
 
                 return (
                   <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                     <td className="py-2 pr-3 font-mono text-slate-600">{emp.employee_code}</td>
-                    <td className="py-2 pr-3 font-medium text-slate-900">{emp.full_name}</td>
-                    <td className="py-2 pr-3 text-slate-700">{emp.position_title}</td>
-                    <td className="py-2 pr-3 text-slate-700">{trainingLabel}</td>
+                    <td className="py-2 pr-3">
+                      <div className="font-medium text-slate-900">{emp.full_name}</div>
+                      {emp.evaluation_note && (
+                        <div className="text-[11px] text-indigo-700 truncate max-w-[220px]">
+                          “{emp.evaluation_note}”
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-700">
+                      <div>{emp.position_title}</div>
+                      {emp.department && (
+                        <div className="text-[11px] text-slate-400">{emp.department}</div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-700">
+                      {formatTrainingLabel(emp.training_type)}
+                    </td>
                     <td className="py-2 pr-3 font-medium text-slate-800">
                       {Number(emp.base_salary ?? 0).toLocaleString('en-US')} ₮
                     </td>
@@ -523,4 +665,4 @@ export function App() {
   );
 }
 
-export default App;
+
