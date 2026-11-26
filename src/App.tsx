@@ -58,6 +58,9 @@ function formatTrainingLabel(type?: string): string {
   return 'Мэргэжлийн';
 }
 
+const HISTORY_STORAGE_KEY = 'egr_hr_evaluation_history_v1';
+const NOTES_STORAGE_KEY = 'egr_hr_evaluation_notes_v1';
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [branches, setBranches] = useState<BranchAnalyticsRow[]>([]);
@@ -68,10 +71,43 @@ export function App() {
   const [performanceFilter, setPerformanceFilter] = useState<PerformanceFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [editingEmployee, setEditingEmployee] = useState<EvaluatableEmployee | null>(null);
-  const [evaluationHistory, setEvaluationHistory] = useState<EvaluationHistoryItem[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [evaluationHistory, setEvaluationHistory] = useState<EvaluationHistoryItem[]>(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as EvaluationHistoryItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [evaluationNotes, setEvaluationNotes] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem(NOTES_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(evaluationHistory));
+    } catch {
+      // ignore storage errors
+    }
+  }, [evaluationHistory]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(evaluationNotes));
+    } catch {
+      // ignore storage errors
+    }
+  }, [evaluationNotes]);
 
   useEffect(() => {
     let mounted = true;
@@ -151,10 +187,17 @@ export function App() {
     return uniqueDeps.sort((a, b) => a.localeCompare(b, 'mn'));
   }, [employees]);
 
+ const hydratedEmployees = useMemo(() => {
+    return employees.map((emp) => ({
+      ...emp,
+      evaluation_note: evaluationNotes[emp.id] ?? emp.evaluation_note ?? '',
+    }));
+  }, [employees, evaluationNotes]);
+
   const filteredEmployees = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    const list = employees.filter((emp) => {
+    const list = hydratedEmployees.filter((emp) => {
       const matchBranch = selectedBranchId === 'all' || emp.branch_id === selectedBranchId;
       const matchDepartment =
         selectedDepartment === 'all' || (emp.department ?? '').trim() === selectedDepartment;
@@ -186,7 +229,7 @@ export function App() {
       }
       return (a.full_name ?? '').localeCompare(b.full_name ?? '', 'mn');
     });
-  }, [employees, selectedBranchId, selectedDepartment, searchQuery, performanceFilter, sortKey]);
+  }, [hydratedEmployees, selectedBranchId, selectedDepartment, searchQuery, performanceFilter, sortKey]);
 
   const metrics = useMemo(() => {
     const totalEmployees = filteredEmployees.length;
@@ -242,6 +285,11 @@ export function App() {
     }
 
     const targetEmployee = employees.find((emp) => emp.id === employeeId);
+
+    setEvaluationNotes((prev) => ({
+      ...prev,
+      [employeeId]: updates.evaluation_note,
+    }));
 
     setEmployees((prev) =>
       prev.map((emp) =>
