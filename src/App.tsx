@@ -10,6 +10,10 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface EmployeeRecord extends EmployeeAnalyticsRow {
   pending_leave_requests?: number;
+  base_salary?: number;
+  bonus_amount?: number;
+  training_type?: 'technical' | 'compliance' | 'leadership' | string;
+  performance_score?: number;
 }
 
 export function App() {
@@ -109,10 +113,15 @@ export function App() {
       (sum, e) => sum + Number(e.pending_leave_requests ?? 0),
       0
     );
+    const totalPayroll = filteredEmployees.reduce(
+      (sum, e) => sum + Number(e.base_salary ?? 0) + Number(e.bonus_amount ?? 0),
+      0
+    );
     return {
       totalEmployees,
       activeEmployees,
       pendingLeavesCount,
+      totalPayroll,
     };
   }, [filteredEmployees]);
 
@@ -125,7 +134,7 @@ export function App() {
               EGR Хүний Нөөцийн Удирдлагын Систем
             </h1>
             <p className="text-xs text-blue-200">
-              Салбар ба төв нэгжийн ажилтан, цаг ашиглалт, сургалт ба амралтын хяналт
+              Салбар ба төв нэгжийн ажилтан, цалин урамшуулал, сургалт ба KPI гүйцэтгэлийн хяналт
             </p>
           </div>
           <div className="text-xs text-blue-100">
@@ -141,7 +150,7 @@ export function App() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <div className="text-xs text-slate-500">Нийт ажилтан</div>
             <div className="text-2xl font-bold text-slate-900 mt-1">
@@ -153,6 +162,13 @@ export function App() {
             <div className="text-xs text-slate-500">Идэвхтэй ажилтан</div>
             <div className="text-2xl font-bold text-emerald-700 mt-1">
               {loading ? '...' : metrics.activeEmployees}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <div className="text-xs text-slate-500">Нийт цалин, урамшууллын сан</div>
+            <div className="text-2xl font-bold text-blue-950 mt-1">
+              {loading ? '...' : `${Math.round(metrics.totalPayroll).toLocaleString('en-US')} ₮`}
             </div>
           </div>
 
@@ -234,23 +250,44 @@ export function App() {
                 <th className="py-2 pr-3 font-medium">Код</th>
                 <th className="py-2 pr-3 font-medium">Овог, нэр</th>
                 <th className="py-2 pr-3 font-medium">Албан тушаал</th>
-                <th className="py-2 pr-3 font-medium">Хэлтэс / Алба</th>
+                <th className="py-2 pr-3 font-medium">Сургалтын төрөл</th>
+                <th className="py-2 pr-3 font-medium">Үндсэн цалин</th>
+                <th className="py-2 pr-3 font-medium">Урамшуулал</th>
+                <th className="py-2 pr-3 font-medium">KPI оноо</th>
                 <th className="py-2 pr-3 font-medium">Төлөв</th>
               </tr>
             </thead>
             <tbody>
-              {filteredEmployees.map((emp) => (
-                <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/70">
-                  <td className="py-2 pr-3 font-mono text-slate-600">{emp.employee_code}</td>
-                  <td className="py-2 pr-3 font-medium text-slate-900">{emp.full_name}</td>
-                  <td className="py-2 pr-3 text-slate-700">{emp.position_title}</td>
-                  <td className="py-2 pr-3 text-slate-700">{emp.department}</td>
-                  <td className="py-2 pr-3 text-slate-700">{emp.status}</td>
-                </tr>
-              ))}
+              {filteredEmployees.map((emp) => {
+                const trainingLabel =
+                  emp.training_type === 'compliance'
+                    ? 'Хууль / Аюулгүй'
+                    : emp.training_type === 'leadership'
+                    ? 'Удирдлага'
+                    : 'Мэргэжлийн';
+
+                return (
+                  <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/70">
+                    <td className="py-2 pr-3 font-mono text-slate-600">{emp.employee_code}</td>
+                    <td className="py-2 pr-3 font-medium text-slate-900">{emp.full_name}</td>
+                    <td className="py-2 pr-3 text-slate-700">{emp.position_title}</td>
+                    <td className="py-2 pr-3 text-slate-700">{trainingLabel}</td>
+                    <td className="py-2 pr-3 font-medium text-slate-800">
+                      {Number(emp.base_salary ?? 0).toLocaleString('en-US')} ₮
+                    </td>
+                    <td className="py-2 pr-3 font-medium text-emerald-700">
+                      {Number(emp.bonus_amount ?? 0).toLocaleString('en-US')} ₮
+                    </td>
+                    <td className="py-2 pr-3 font-semibold text-indigo-700">
+                      {Number(emp.performance_score ?? 0).toFixed(0)}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-700">{emp.status}</td>
+                  </tr>
+                );
+              })}
               {!loading && filteredEmployees.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-500">
+                  <td colSpan={8} className="py-6 text-center text-slate-500">
                     Тохирох ажилтны мэдээлэл олдсонгүй.
                   </td>
                 </tr>
